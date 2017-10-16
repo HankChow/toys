@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # coding: utf-8
 
+import os
 import requests
 from bs4 import BeautifulSoup
 from characters import *
@@ -39,6 +40,17 @@ class gcc(object):
         soup = BeautifulSoup(page, 'lxml')
         return list(map(lambda x: x['data-date'], soup.find_all('rect', class_='day')[:len(self.concatted)]))
 
+    def do_push(self):
+        os.system('touch temp.txt')
+        changed = 0
+        dates = self.get_dates()
+        for i in range(len(self.concatted)):
+            if self.concatted[i]:
+                changed += 1
+                os.system('echo "{c}" > temp.txt'.format(c=changed))
+                os.system('git add temp.txt')
+                os.system('git commit -m "{c}" --date="{d} 12:00 +0800"'.format(c=changed, d=dates[i]))
+        os.system('git push -u origin master')
+
 if __name__ == '__main__':
-    g = gcc('HankChow')
-    print(g.get_dates())
+    pass
