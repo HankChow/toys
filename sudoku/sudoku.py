@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # coding: utf-8
 
+import itertools
 from colorama import *
 from functools import reduce
 
@@ -38,6 +39,7 @@ class Sudoku(object):
             for column in range(9):
                 cell = Cell(row, column)
                 self.cells[(row, column)] = cell
+        self.initiative_unsolved = 81
 
     def read_sudoku(self, filename):
         with open(filename) as f:
@@ -50,6 +52,7 @@ class Sudoku(object):
                 column = index % 9
                 row = (index - column) / 9
                 self.cells[(row, column)].give(num)
+        self.initiative_unsolved = self.get_unsolved_count()
 
     def display_sudoku(self):
         for i in range(9):
@@ -60,6 +63,8 @@ class Sudoku(object):
                     str(row[j].value if row[j].value != 0 else ' '), end=' ')
                 print(Style.RESET_ALL, end='')
             print()
+        print('-' * 18)
+        print('{solved}/{initiative} solved.'.format(solved=(self.initiative_unsolved - self.get_unsolved_count()), initiative=self.initiative_unsolved))
 
     def get_cells_by_row(self, row):
         cells = []
@@ -118,7 +123,7 @@ class Sudoku(object):
             previous_unsolved = unsolved
             unsolved = self.get_unsolved_count()
 
-    # 遍历每一个 row/column/block ，如果 row/column/block 内唯一有一个未填的 cell 拥有某个候选数，这个未填的 cell 就可以 confirm 这个候选数
+    # 遍历每一个 row/column/block ，如果 row/column/block 内唯一有一个空 cell 拥有某个候选数，这个空 cell 就可以 confirm 这个候选数
     def unique_nominee(self):
         previous_unsolved = None
         unsolved = self.get_unsolved_count()
@@ -159,6 +164,50 @@ class Sudoku(object):
             previous_unsolved = unsolved
             unsolved = self.get_unsolved_count()
 
+    # 链数删减：如果某个 row/column/block 中，有 m 个空 cell ，由其中 n(m>n) 个空 cell 的候选数组成的集合元素个数恰好为 n ，那么可以在另外的那 m-n 个空 cell 中去除这些候选数
+    def number_chain(self, rank):
+        # row
+        for row in range(9):
+            empty_cells = list(filter(lambda x: x.value == 0, self.get_cells_by_row(row)))
+            # 有效的 n 链数只会出现在至少 n+1 个空 cell 的情况中
+            if len(empty_cells) > rank:
+                combinations = itertools.combinations(empty_cells, rank)
+                for c in combinations:
+                    combination_nominees = list(map(lambda x: x.nominees, c))
+                    combination_nominees_set = set([x for y in combination_nominees for x in y])
+                    if len(combination_nominees_set) == rank:
+                        for other_empty in list(filter(lambda x: x not in c, empty_cells)):
+                            for n in combination_nominees_set:
+                                if n in other_empty.nominees:
+                                    self.cells[(other_empty.row, other_empty.column)].nominees.remove(n)
+        # column
+        for column in range(9):
+            empty_cells = list(filter(lambda x: x.value == 0, self.get_cells_by_column(column)))
+            # 有效的 n 链数只会出现在至少 n+1 个空 cell 的情况中
+            if len(empty_cells) > rank:
+                combinations = itertools.combinations(empty_cells, rank)
+                for c in combinations:
+                    combination_nominees = list(map(lambda x: x.nominees, c))
+                    combination_nominees_set = set([x for y in combination_nominees for x in y])
+                    if len(combination_nominees_set) == rank:
+                        for other_empty in list(filter(lambda x: x not in c, empty_cells)):
+                            for n in combination_nominees_set:
+                                if n in other_empty.nominees:
+                                    self.cells[(other_empty.row, other_empty.column)].nominees.remove(n)
+        # block
+        for block in range(9):
+            empty_cells = list(filter(lambda x: x.value == 0, self.get_cells_by_block(block)))
+            # 有效的 n 链数只会出现在至少 n+1 个空 cell 的情况中
+            if len(empty_cells) > rank:
+                combinations = itertools.combinations(empty_cells, rank)
+                for c in combinations:
+                    combination_nominees = list(map(lambda x: x.nominees, c))
+                    combination_nominees_set = set([x for y in combination_nominees for x in y])
+                    if len(combination_nominees_set) == rank:
+                        for other_empty in list(filter(lambda x: x not in c, empty_cells)):
+                            for n in combination_nominees_set:
+                                if n in other_empty.nominees:
+                                    self.cells[(other_empty.row, other_empty.column)].nominees.remove(n)
 
     # 按照优先级，往复遍历一次所有求值方法
     def whole_solve(self):
@@ -172,11 +221,19 @@ class Sudoku(object):
             previous_unsolved = unsolved
             unsolved = self.get_unsolved_count()
 
+    def show_nominees(self):
+        for i in range(9):
+            for j in range(9):
+                print(self.cells[(i, j)].nominees, end=' ')
+            print()
+
             
 if __name__ == '__main__':
     s = Sudoku()
     s.read_sudoku('aaa')
-    s.display_sudoku()
+    s.whole_solve()
+    s.number_chain(2)
+    s.number_chain(3)
     s.whole_solve()
     print()
     s.display_sudoku()
