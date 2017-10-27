@@ -56,7 +56,7 @@ class Sudoku(object):
 
     def display_sudoku(self):
         for i in range(9):
-            row = self.get_cells_by_row(i)
+            row = self.get_cells_by('row', i)
             for j in range(9):
                 print(('' if row[j].block % 2 == 0 else (Fore.BLACK + Back.WHITE)) + 
                     ('' if row[j].is_given else Fore.BLUE + Style.BRIGHT) + 
@@ -66,24 +66,21 @@ class Sudoku(object):
         print('-' * 18)
         print('{solved}/{initiative} solved.'.format(solved=(self.initiative_unsolved - self.get_unsolved_count()), initiative=self.initiative_unsolved))
 
-    def get_cells_by_row(self, row):
+    def get_cells_by(self, unit, num):
         cells = []
-        for i in range(9):
-            cells.append(self.cells[(row, i)])
-        return cells
-
-    def get_cells_by_column(self, column):
-        cells = []
-        for i in range(9):
-            cells.append(self.cells[(i, column)])
-        return cells
-
-    def get_cells_by_block(self, block):
-        cells = []
-        for i in range(9):
-            for j in range(9):
-                if self.cells[(i, j)].block == block:
-                    cells.append(self.cells[(i, j)])
+        if unit == 'row':
+            for i in range(9):
+                cells.append(self.cells[(num, i)])
+        elif unit == 'column':
+            for i in range(9):
+                cells.append(self.cells[(i, num)])
+        elif unit == 'block':
+            for i in range(9):
+                for j in range(9):
+                    if self.cells[(i, j)].block == num:
+                        cells.append(self.cells[(i, j)])
+        else:
+            return None
         return cells
 
     def get_unsolved_count(self):
@@ -112,9 +109,9 @@ class Sudoku(object):
                     # 当某个 cell 为空时
                     if self.cells[(row, column)].value == 0:
                         nominee_set = set(self.cells[(row, column)].nominees)
-                        others_in_row = set(list(map(lambda x: x.value, self.get_cells_by_row(row))))
-                        others_in_column = set(list(map(lambda x: x.value, self.get_cells_by_column(column))))
-                        others_in_block = set(list(map(lambda x: x.value, self.get_cells_by_block(self.cells[(row, column)].block))))
+                        others_in_row = set(list(map(lambda x: x.value, self.get_cells_by('row', row))))
+                        others_in_column = set(list(map(lambda x: x.value, self.get_cells_by('column', column))))
+                        others_in_block = set(list(map(lambda x: x.value, self.get_cells_by('block', self.cells[(row, column)].block))))
                         self.cells[(row, column)].nominees = list(nominee_set - others_in_row - others_in_column - others_in_block)
             for row in range(9):
                 for column in range(9):
@@ -128,86 +125,71 @@ class Sudoku(object):
         previous_unsolved = None
         unsolved = self.get_unsolved_count()
         while(previous_unsolved != unsolved):
-            # row
-            for row in range(9):
-                empty_cells = list(filter(lambda x: x.value == 0, self.get_cells_by_row(row)))
-                if len(empty_cells) > 1:
-                    for index, value in enumerate(empty_cells):
-                        others_nominees = set(reduce(lambda x, y: x + y, list(map(lambda w: w.nominees, list(filter(lambda z: empty_cells.index(z) != index, empty_cells))))))
-                        this_nominees = list(set(value.nominees) - others_nominees)
-                        if len(this_nominees) == 1:
-                            unique_cell = empty_cells[index]
-                            self.cells[(unique_cell.row, unique_cell.column)].confirm(this_nominees[0])
-                            self.suppress(self.cells[(unique_cell.row, unique_cell.column)], this_nominees[0])
-            # column
-            for column in range(9):
-                empty_cells = list(filter(lambda x: x.value == 0, self.get_cells_by_column(column)))
-                if len(empty_cells) > 1:
-                    for index, value in enumerate(empty_cells):
-                        others_nominees = set(reduce(lambda x, y: x + y, list(map(lambda w: w.nominees, list(filter(lambda z: empty_cells.index(z) != index, empty_cells))))))
-                        this_nominees = list(set(value.nominees) - others_nominees)
-                        if len(this_nominees) == 1:
-                            unique_cell = empty_cells[index]
-                            self.cells[(unique_cell.row, unique_cell.column)].confirm(this_nominees[0])
-                            self.suppress(self.cells[(unique_cell.row, unique_cell.column)], this_nominees[0])
-            # block
-            for block in range(9):
-                empty_cells = list(filter(lambda x: x.value == 0, self.get_cells_by_block(block)))
-                if len(empty_cells) > 1:
-                    for index, value in enumerate(empty_cells):
-                        others_nominees = set(reduce(lambda x, y: x + y, list(map(lambda w: w.nominees, list(filter(lambda z: empty_cells.index(z) != index, empty_cells))))))
-                        this_nominees = list(set(value.nominees) - others_nominees)
-                        if len(this_nominees) == 1:
-                            unique_cell = empty_cells[index]
-                            self.cells[(unique_cell.row, unique_cell.column)].confirm(this_nominees[0])
-                            self.suppress(self.cells[(unique_cell.row, unique_cell.column)], this_nominees[0])
+            for unit in ['row', 'column', 'block']:
+                for num in range(9):
+                    empty_cells = list(filter(lambda x: x.value == 0, self.get_cells_by(unit, num)))
+                    if len(empty_cells) > 1:
+                        for index, value in enumerate(empty_cells):
+                            others_nominees = set(reduce(lambda x, y: x + y, list(map(lambda w: w.nominees, list(filter(lambda z: empty_cells.index(z) != index, empty_cells))))))
+                            this_nominees = list(set(value.nominees) - others_nominees)
+                            if len(this_nominees) == 1:
+                                unique_cell = empty_cells[index]
+                                self.cells[(unique_cell.row, unique_cell.column)].confirm(this_nominees[0])
+                                self.suppress(self.cells[(unique_cell.row, unique_cell.column)], this_nominees[0])
             previous_unsolved = unsolved
             unsolved = self.get_unsolved_count()
 
-    # 链数删减：如果某个 row/column/block 中，有 m 个空 cell ，由其中 n(m>n) 个空 cell 的候选数组成的集合元素个数恰好为 n ，那么可以在另外的那 m-n 个空 cell 中去除这些候选数
+    # 显/隐性数组：如果某个 row/column/block 中，有 m 个空 cell ，由其中 n(m>n) 个空 cell 的候选数组成的集合元素个数恰好为 n ，那么可以在另外的那 m-n 个空 cell 中去除这些候选数
     def number_chain(self, rank):
-        # row
-        for row in range(9):
-            empty_cells = list(filter(lambda x: x.value == 0, self.get_cells_by_row(row)))
-            # 有效的 n 链数只会出现在至少 n+1 个空 cell 的情况中
-            if len(empty_cells) > rank:
-                combinations = itertools.combinations(empty_cells, rank)
-                for c in combinations:
-                    combination_nominees = list(map(lambda x: x.nominees, c))
-                    combination_nominees_set = set([x for y in combination_nominees for x in y])
-                    if len(combination_nominees_set) == rank:
-                        for other_empty in list(filter(lambda x: x not in c, empty_cells)):
-                            for n in combination_nominees_set:
-                                if n in other_empty.nominees:
-                                    self.cells[(other_empty.row, other_empty.column)].nominees.remove(n)
-        # column
-        for column in range(9):
-            empty_cells = list(filter(lambda x: x.value == 0, self.get_cells_by_column(column)))
-            # 有效的 n 链数只会出现在至少 n+1 个空 cell 的情况中
-            if len(empty_cells) > rank:
-                combinations = itertools.combinations(empty_cells, rank)
-                for c in combinations:
-                    combination_nominees = list(map(lambda x: x.nominees, c))
-                    combination_nominees_set = set([x for y in combination_nominees for x in y])
-                    if len(combination_nominees_set) == rank:
-                        for other_empty in list(filter(lambda x: x not in c, empty_cells)):
-                            for n in combination_nominees_set:
-                                if n in other_empty.nominees:
-                                    self.cells[(other_empty.row, other_empty.column)].nominees.remove(n)
-        # block
-        for block in range(9):
-            empty_cells = list(filter(lambda x: x.value == 0, self.get_cells_by_block(block)))
-            # 有效的 n 链数只会出现在至少 n+1 个空 cell 的情况中
-            if len(empty_cells) > rank:
-                combinations = itertools.combinations(empty_cells, rank)
-                for c in combinations:
-                    combination_nominees = list(map(lambda x: x.nominees, c))
-                    combination_nominees_set = set([x for y in combination_nominees for x in y])
-                    if len(combination_nominees_set) == rank:
-                        for other_empty in list(filter(lambda x: x not in c, empty_cells)):
-                            for n in combination_nominees_set:
-                                if n in other_empty.nominees:
-                                    self.cells[(other_empty.row, other_empty.column)].nominees.remove(n)
+        for unit in ['row', 'column', 'block']:
+            for num in range(9):
+                empty_cells = list(filter(lambda x: x.value == 0, self.get_cells_by(unit, num)))
+                # 有效的 n 链数只会出现在至少 n+1 个空 cell 的情况中
+                if len(empty_cells) > rank:
+                    combinations = itertools.combinations(empty_cells, rank)
+                    for c in combinations:
+                        combination_nominees = list(map(lambda x: x.nominees, c))
+                        combination_nominees_set = set([x for y in combination_nominees for x in y])
+                        if len(combination_nominees_set) == rank:
+                            for other_empty in list(filter(lambda x: x not in c, empty_cells)):
+                                for n in combination_nominees_set:
+                                    if n in other_empty.nominees:
+                                        self.cells[(other_empty.row, other_empty.column)].nominees.remove(n)
+
+    # Y-wing
+    def y_wing(self):
+        for num in range(9):
+            block = self.get_cells_by('block', num)
+            doubles = list(filter(lambda x: len(x.nominees) == 2, block))
+            double_group = list(itertools.combinations(doubles, 2))
+            available_group = list(filter(lambda x: len(set(x[0].nominees) & set(x[1].nominees)) == 3 and x[0].row != x[1].row and x[0].column != x[1].column, double_group))
+            if len(available_group) == 0:
+                continue
+            for ag in available_group:
+                third_area = []
+                third_area.append(self.get_cells_by('row', ag[0].row))
+                third_area.append(self.get_cells_by('row', ag[1].row))
+                third_area.append(self.get_cells_by('column', ag[0].column))
+                third_area.append(self.get_cells_by('column', ag[1].column))
+                third_area = list(filter(lambda x: x.block != num, third_area))
+                for cell in third_area:
+                    if set(cell.nominees) == set(ag[0].nominees) ^ set(ag[1].nominees):
+                        if cell.row == ag[0].row or cell.column == ag[0].column:
+                            nominee_to_delete = (set(cell.nominees) & set(ag[1].nominees)).pop()
+                            inner_influence = [x for y in [self.get_cells_by('row', ag[1].row), self.get_cells_by('column', ag[1].column), self.get_cells_by('block', ag[1].block)] for x in y]
+                            outer_influence = [x for y in [self.get_cells_by('row', cell.row), self.get_cells_by('column', cell.column), self.get_cells_by('block', cell.block)] for x in y]
+                            common_influence = list(set(inner_influence) & set(outer_influence))
+                            for ci in common_influence:
+                                if nominee_to_delete in ci.nominees:
+                                    self.cells[(ci.row, ci.column)].nominees.remove(nominee_set)
+                        if cell.row == ag[1].row or cell.column == ag[1].column:
+                            nominee_to_delete = (set(cell.nominees) & set(ag[0].nominees)).pop()
+                            inner_influence = [x for y in [self.get_cells_by('row', ag[0].row), self.get_cells_by('column', ag[0].column), self.get_cells_by('block', ag[0].block)] for x in y]
+                            outer_influence = [x for y in [self.get_cells_by('row', cell.row), self.get_cells_by('column', cell.column), self.get_cells_by('block', cell.block)] for x in y]
+                            common_influence = list(set(inner_influence) & set(outer_influence))
+                            for ci in common_influence:
+                                if nominee_to_delete in ci.nominees:
+                                    self.cells[(ci.row, ci.column)].nominees.remove(nominee_set)
 
     # 按照优先级，往复遍历一次所有求值方法
     def whole_solve(self):
@@ -218,6 +200,8 @@ class Sudoku(object):
         while(previous_unsolved != unsolved):
             for method in whole:
                 method()
+            self.number_chain(2)
+            self.number_chain(3)
             previous_unsolved = unsolved
             unsolved = self.get_unsolved_count()
 
@@ -231,9 +215,6 @@ class Sudoku(object):
 if __name__ == '__main__':
     s = Sudoku()
     s.read_sudoku('aaa')
-    s.whole_solve()
-    s.number_chain(2)
-    s.number_chain(3)
     s.whole_solve()
     print()
     s.display_sudoku()
