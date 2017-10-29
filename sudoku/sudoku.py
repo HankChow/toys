@@ -191,6 +191,10 @@ class Sudoku(object):
                                 if nominee_to_delete in ci.nominees:
                                     self.cells[(ci.row, ci.column)].nominees.remove(nominee_set)
 
+    # 暴力尝试
+    def attempt(self):
+        pass
+
     # 按照优先级，往复遍历一次所有求值方法
     def whole_solve(self):
         priority = [self.kill_nominees, self.unique_nominee]
