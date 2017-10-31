@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # coding: utf-8
 
+import copy
 import itertools
 from colorama import *
 from functools import reduce
@@ -65,6 +66,15 @@ class Sudoku(object):
             print()
         print('-' * 18)
         print('{solved}/{initiative} solved.'.format(solved=(self.initiative_unsolved - self.get_unsolved_count()), initiative=self.initiative_unsolved))
+
+    def check_sudoku(self):
+        clear_flag = True
+        unit = ['row', 'column', 'block']
+        for i in range(9):
+            for u in unit:
+                if set(list(map(lambda x: x.value, self.get_cells_by(u, i)))) != set([x for x in range(1, 10)]):
+                    clear_flag = False
+        return clear_flag
 
     def get_cells_by(self, unit, num):
         cells = []
@@ -193,8 +203,41 @@ class Sudoku(object):
 
     # 暴力尝试
     def attempt(self):
-        pass
-
+        fewest_nominees_count = 9
+        target = None
+        for row in range(9):
+            for column in range(9):
+                if 1 < len(self.cells[(row, column)].nominees) < fewest_nominees_count:
+                    target = self.cells[(row, column)]
+                    fewest_nominees_count = len(target.nominees)
+        copies = []
+        for i in range(fewest_nominees_count):
+            c = copy.deepcopy(self)
+            copies.append(c)
+        for index in range(len(copies)):
+            copies[index].cells[(target.row, target.column)].confirm(target.nominees[index])
+            copies[index].suppress(copies[index].cells[(target.row, target.column)], target.nominees[index])
+            copies[index].whole_solve()
+        for c in copies:
+            # 有错误的情形
+            wrong_flag = False
+            for row in range(9):
+                for column in range(9):
+                    if len(c.cells[(row, column)].nominees) == 0 and c.cells[(row, column)].value == 0:
+                        wrong_flag = True
+            if wrong_flag:
+                self.cells[(target.row, target.column)].nominees.remove(target.nominees[copies.index(c)])
+            else:
+            # 无错误但无法继续的情形
+                if not c.check_sudoku():
+                    pass
+            # 无错误且完成了的情形
+                else:
+                    for row in range(9):
+                        for column in range(9):
+                            self.cells[(row, column)] = c.cells[(row, column)]
+                    return
+    
     # 按照优先级，往复遍历一次所有求值方法
     def whole_solve(self):
         priority = [self.kill_nominees, self.unique_nominee]
@@ -220,5 +263,6 @@ if __name__ == '__main__':
     s = Sudoku()
     s.read_sudoku('aaa')
     s.whole_solve()
+    s.attempt()
     print()
     s.display_sudoku()
