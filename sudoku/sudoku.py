@@ -15,6 +15,7 @@ class Cell(object):
         self.value = value
         self.nominees = [n for n in range(1, 10)] if value == 0 else []
         self.is_given = False
+        self.attempted = False
 
     def give(self, value):
         self.value = value
@@ -68,13 +69,33 @@ class Sudoku(object):
         print('{solved}/{initiative} solved.'.format(solved=(self.initiative_unsolved - self.get_unsolved_count()), initiative=self.initiative_unsolved))
 
     def check_sudoku(self):
-        clear_flag = True
-        unit = ['row', 'column', 'block']
-        for i in range(9):
-            for u in unit:
-                if set(list(map(lambda x: x.value, self.get_cells_by(u, i)))) != set([x for x in range(1, 10)]):
-                    clear_flag = False
-        return clear_flag
+        finish_flag = True
+        for row in range(9):
+            for column in range(9):
+                if self.cells[(row, column)].value == 0:
+                    finish_flag = False
+        if not finish_flag:
+            # 如果未完成，只检查在同一 row/column/block 内是否有重复数，以及是否存在没有候选数的空 cell
+            clear_flag = True
+            unit = ['row', 'column', 'block']
+            for i in range(9):
+                for u in unit:
+                    if list(map(lambda y: y.value, list(filter(lambda x: x.value != 0, self.get_cells_by(u, i))))) != list(set(list(map(lambda y: y.value, list(filter(lambda x: x.value != 0, self.get_cells_by(u, i))))))):
+                        clear_flag = False
+            for row in range(9):
+                for column in range(9):
+                    if self.cells[(row, column)].value == 0 and len(self.cells[(row, column)].nominees) == 0:
+                        clear_flag = False
+            return clear_flag
+        else:
+            # 如果已完成，检查是否每个 row/column/block 都是正确的
+            clear_flag = True
+            unit = ['row', 'column', 'block']
+            for i in range(9):
+                for u in unit:
+                    if set(list(map(lambda x: x.value, self.get_cells_by(u, i)))) != set([x for x in range(1, 10)]):
+                        clear_flag = False
+            return clear_flag
 
     def get_cells_by(self, unit, num):
         cells = []
@@ -150,21 +171,22 @@ class Sudoku(object):
             unsolved = self.get_unsolved_count()
 
     # 显/隐性数组：如果某个 row/column/block 中，有 m 个空 cell ，由其中 n(m>n) 个空 cell 的候选数组成的集合元素个数恰好为 n ，那么可以在另外的那 m-n 个空 cell 中去除这些候选数
-    def number_chain(self, rank):
-        for unit in ['row', 'column', 'block']:
-            for num in range(9):
-                empty_cells = list(filter(lambda x: x.value == 0, self.get_cells_by(unit, num)))
-                # 有效的 n 链数只会出现在至少 n+1 个空 cell 的情况中
-                if len(empty_cells) > rank:
-                    combinations = itertools.combinations(empty_cells, rank)
-                    for c in combinations:
-                        combination_nominees = list(map(lambda x: x.nominees, c))
-                        combination_nominees_set = set([x for y in combination_nominees for x in y])
-                        if len(combination_nominees_set) == rank:
-                            for other_empty in list(filter(lambda x: x not in c, empty_cells)):
-                                for n in combination_nominees_set:
-                                    if n in other_empty.nominees:
-                                        self.cells[(other_empty.row, other_empty.column)].nominees.remove(n)
+    def number_chain(self):
+        for rank in [2, 3]:
+            for unit in ['row', 'column', 'block']:
+                for num in range(9):
+                    empty_cells = list(filter(lambda x: x.value == 0, self.get_cells_by(unit, num)))
+                    # 有效的 n 链数只会出现在至少 n+1 个空 cell 的情况中
+                    if len(empty_cells) > rank:
+                        combinations = itertools.combinations(empty_cells, rank)
+                        for c in combinations:
+                            combination_nominees = list(map(lambda x: x.nominees, c))
+                            combination_nominees_set = set([x for y in combination_nominees for x in y])
+                            if len(combination_nominees_set) == rank:
+                                for other_empty in list(filter(lambda x: x not in c, empty_cells)):
+                                    for n in combination_nominees_set:
+                                        if n in other_empty.nominees:
+                                            self.cells[(other_empty.row, other_empty.column)].nominees.remove(n)
 
     # Y-wing
     def y_wing(self):
@@ -203,54 +225,68 @@ class Sudoku(object):
 
     # 暴力尝试
     def attempt(self):
-        fewest_nominees_count = 9
-        target = None
-        for row in range(9):
-            for column in range(9):
-                if 1 < len(self.cells[(row, column)].nominees) < fewest_nominees_count:
-                    target = self.cells[(row, column)]
-                    fewest_nominees_count = len(target.nominees)
-        copies = []
-        for i in range(fewest_nominees_count):
-            c = copy.deepcopy(self)
-            copies.append(c)
-        for index in range(len(copies)):
-            copies[index].cells[(target.row, target.column)].confirm(target.nominees[index])
-            copies[index].suppress(copies[index].cells[(target.row, target.column)], target.nominees[index])
-            copies[index].whole_solve()
-        for c in copies:
-            # 有错误的情形
-            wrong_flag = False
+        while(True):
+            empty_cells = []
             for row in range(9):
                 for column in range(9):
-                    if len(c.cells[(row, column)].nominees) == 0 and c.cells[(row, column)].value == 0:
-                        wrong_flag = True
-            if wrong_flag:
-                self.cells[(target.row, target.column)].nominees.remove(target.nominees[copies.index(c)])
-            else:
-            # 无错误但无法继续的情形
-                if not c.check_sudoku():
-                    pass
-            # 无错误且完成了的情形
+                    if self.cells[(row, column)].value == 0 and not self.cells[(row, column)].attempted:
+                        empty_cells.append(copy.copy(self.cells[(row, column)]))
+            if len(empty_cells) == 0:
+                break
+            empty_cells = sorted(empty_cells, key=lambda x: len(x.nominees))
+            target = empty_cells[0]
+            print('Attempting ({r}, {c})...'.format(r=target.row, c=target.column))
+            copies = []
+            for i in range(len(target.nominees)):
+                c = copy.deepcopy(self)
+                copies.append(c)
+            for index in range(len(copies)):
+                copies[index].cells[(target.row, target.column)].confirm(target.nominees[index])
+                copies[index].suppress(copies[index].cells[(target.row, target.column)], target.nominees[index])
+                copies[index].whole_solve()
+            situations = []
+            for c in copies:
+                # 判断 whole_solve() 后的盘面是有错误、无错误且未完成、无错误且已完成三种情况中的哪一种，并在 situations 列表中分别以-1、0、1表示
+                wrong_flag = False
+                empty_flag = False
+                for row in range(9):
+                    for column in range(9):
+                        if c.cells[(row, column)].value == 0:
+                            empty_flag = True
+                            if len(c.cells[(row, column)].nominees) == 0:
+                                wrong_flag = True
+                if wrong_flag:
+                    situations.append(-1)
+                elif empty_flag:
+                    situations.append(0)
                 else:
-                    for row in range(9):
-                        for column in range(9):
-                            self.cells[(row, column)] = c.cells[(row, column)]
-                    return
+                    situations.append(1)
+            # 先判断是否有1，如果有1，直接返回已完成的盘面
+            if 1 in situations:
+                for row in range(9):
+                    for column in range(9):
+                        self.cells[(row, column)] == c.cells[(row, column)]
+                return
+            # 如果没有1，判断是否只有一个0，如果只有一个0，可以 confirm()
+            elif situations.count(0) == 1:
+                pass
+            # 如果0的个数大于一，只能去掉造成-1的那些候选数
+            else:
+                pass
+            self.cells[(target.row, target.column)].attempted = True # 如果 cell 在尝试过所有候选数都没有确定，改变这个标志位，在其它 cell 有候选数的变动之前不再尝试这个 cell
     
     # 按照优先级，往复遍历一次所有求值方法
     def whole_solve(self):
-        priority = [self.kill_nominees, self.unique_nominee]
+        priority = [self.kill_nominees, self.unique_nominee, self.number_chain, self.y_wing]
         whole = priority[:-1] + priority[::-1]
         previous_unsolved = None
         unsolved = self.get_unsolved_count()
         while(previous_unsolved != unsolved):
             for method in whole:
                 method()
-            self.number_chain(2)
-            self.number_chain(3)
             previous_unsolved = unsolved
             unsolved = self.get_unsolved_count()
+
 
     def show_nominees(self):
         for i in range(9):
@@ -265,4 +301,5 @@ if __name__ == '__main__':
     s.whole_solve()
     s.attempt()
     print()
+    print(s.check_sudoku())
     s.display_sudoku()
