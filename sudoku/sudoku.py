@@ -265,7 +265,7 @@ class Sudoku(object):
             if 1 in situations:
                 for row in range(9):
                     for column in range(9):
-                        self.cells[(row, column)] == c.cells[(row, column)]
+                        self.cells[(row, column)] = copies[situations.index(1)].cells[(row, column)]
                 return
             # 如果没有1，判断是否只有一个0，如果只有一个0，可以 confirm()
             elif situations.count(0) == 1:
@@ -301,5 +301,4 @@ if __name__ == '__main__':
     s.whole_solve()
     s.attempt()
     print()
-    print(s.check_sudoku())
     s.display_sudoku()
