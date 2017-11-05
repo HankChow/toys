@@ -56,6 +56,13 @@ class Sudoku(object):
                 self.cells[(row, column)].give(num)
         self.initiative_unsolved = self.get_unsolved_count()
 
+    def plain_sudoku(self):
+        plain = ''
+        for row in range(9):
+            for column in range(9):
+                plain += str(self.cells[(row, column)].value)
+        return plain
+
     def display_sudoku(self):
         for i in range(9):
             row = self.get_cells_by('row', i)
@@ -297,7 +304,7 @@ class Sudoku(object):
             
 if __name__ == '__main__':
     s = Sudoku()
-    s.read_sudoku('aaa')
+    s.read_sudoku('ddd')
     s.whole_solve()
     s.attempt()
     print()
