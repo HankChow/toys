@@ -3,6 +3,8 @@
 
 import copy
 import itertools
+import sys
+import time
 from colorama import *
 from functools import reduce
 
@@ -73,7 +75,7 @@ class Sudoku(object):
                 print(Style.RESET_ALL, end='')
             print()
         print('-' * 18)
-        print('{solved}/{initiative} solved.'.format(solved=(self.initiative_unsolved - self.get_unsolved_count()), initiative=self.initiative_unsolved))
+        print('{solved}/{initiative} blanks filled.'.format(solved=(self.initiative_unsolved - self.get_unsolved_count()), initiative=self.initiative_unsolved))
 
     def check_sudoku(self):
         finish_flag = True
@@ -302,10 +304,37 @@ class Sudoku(object):
             print()
 
             
-if __name__ == '__main__':
+def run(filename):
     s = Sudoku()
-    s.read_sudoku('ddd')
+    s.read_sudoku(filename)
     s.whole_solve()
-    s.attempt()
+    if not s.check_sudoku():
+        s.attempt()
     print()
+    print('Solution of "{filename}":'.format(filename=filename))
     s.display_sudoku()
+    print()
+    if s.check_sudoku():
+        return True
+    return False
+
+if __name__ == '__main__':
+    if len(sys.argv) > 1:
+        times = []
+        unsolved = []
+        finish_count = 0
+        for f in sys.argv[1:]:
+            begin_time = time.time()
+            result = run(f)
+            end_time = time.time()
+            if result:
+                finish_count += 1
+                times.append(round(end_time - begin_time, 3))
+            else:
+                unsolved.append(f)
+        print('min/max/avg/tot = {0}/{1}/{2}/{3} s'.format(min(times), max(times), round(sum(times) / len(times), 3), round(sum(times), 3)))
+        print('{0}/{1} Sudokus solved.'.format(finish_count, len(sys.argv) - 1))
+        if unsolved:
+            print('Unsolved sudoku(s):{0}'.format(unsolved))
+    else:
+        run('ddd')
