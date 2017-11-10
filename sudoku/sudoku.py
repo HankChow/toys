@@ -8,6 +8,8 @@ import time
 from colorama import *
 from functools import reduce
 
+SHOW_STEP_SOLVED = False
+
 class Cell(object):
     
     def __init__(self, row, column, value=0):
@@ -142,7 +144,7 @@ class Sudoku(object):
     # 遍历每一个 cell 并去除候选数，然后遍历 cell.clear() 一次
     def kill_nominees(self):
         previous_unsolved = None
-        unsolved = self.get_unsolved_count()
+        preview = unsolved = self.get_unsolved_count()
         while(previous_unsolved != unsolved):
             for row in range(9):
                 for column in range(9):
@@ -159,11 +161,16 @@ class Sudoku(object):
                     self.suppress(self.cells[(row, column)], newly_fill)
             previous_unsolved = unsolved
             unsolved = self.get_unsolved_count()
+        if SHOW_STEP_SOLVED:
+            print('{funcname}(): {0}/{1} solved.'.format(self.initiative_unsolved - self.get_unsolved_count(), self.initiative_unsolved, funcname=self.kill_nominees.__name__))
+        if self.get_unsolved_count() == 0:
+            return True
+        return False
 
     # 遍历每一个 row/column/block ，如果 row/column/block 内唯一有一个空 cell 拥有某个候选数，这个空 cell 就可以 confirm 这个候选数
     def unique_nominee(self):
         previous_unsolved = None
-        unsolved = self.get_unsolved_count()
+        preview = unsolved = self.get_unsolved_count()
         while(previous_unsolved != unsolved):
             for unit in ['row', 'column', 'block']:
                 for num in range(9):
@@ -178,59 +185,84 @@ class Sudoku(object):
                                 self.suppress(self.cells[(unique_cell.row, unique_cell.column)], this_nominees[0])
             previous_unsolved = unsolved
             unsolved = self.get_unsolved_count()
+        if SHOW_STEP_SOLVED:
+            print('{funcname}(): {0}/{1} solved.'.format(self.initiative_unsolved - self.get_unsolved_count(), self.initiative_unsolved, funcname=self.unique_nominee.__name__))
+        if self.get_unsolved_count() == 0:
+            return True
+        return False
 
     # 显/隐性数组：如果某个 row/column/block 中，有 m 个空 cell ，由其中 n(m>n) 个空 cell 的候选数组成的集合元素个数恰好为 n ，那么可以在另外的那 m-n 个空 cell 中去除这些候选数
     def number_chain(self):
-        for rank in [2, 3]:
-            for unit in ['row', 'column', 'block']:
-                for num in range(9):
-                    empty_cells = list(filter(lambda x: x.value == 0, self.get_cells_by(unit, num)))
-                    # 有效的 n 链数只会出现在至少 n+1 个空 cell 的情况中
-                    if len(empty_cells) > rank:
-                        combinations = itertools.combinations(empty_cells, rank)
-                        for c in combinations:
-                            combination_nominees = list(map(lambda x: x.nominees, c))
-                            combination_nominees_set = set([x for y in combination_nominees for x in y])
-                            if len(combination_nominees_set) == rank:
-                                for other_empty in list(filter(lambda x: x not in c, empty_cells)):
-                                    for n in combination_nominees_set:
-                                        if n in other_empty.nominees:
-                                            self.cells[(other_empty.row, other_empty.column)].nominees.remove(n)
+        previous_unsolved = None
+        preview = unsolved = self.get_unsolved_count()
+        while(previous_unsolved != unsolved):
+            for rank in [2, 3]:
+                for unit in ['row', 'column', 'block']:
+                    for num in range(9):
+                        empty_cells = list(filter(lambda x: x.value == 0, self.get_cells_by(unit, num)))
+                        # 有效的 n 链数只会出现在至少 n+1 个空 cell 的情况中
+                        if len(empty_cells) > rank:
+                            combinations = itertools.combinations(empty_cells, rank)
+                            for c in combinations:
+                                combination_nominees = list(map(lambda x: x.nominees, c))
+                                combination_nominees_set = set([x for y in combination_nominees for x in y])
+                                if len(combination_nominees_set) == rank:
+                                    for other_empty in list(filter(lambda x: x not in c, empty_cells)):
+                                        for n in combination_nominees_set:
+                                            if n in other_empty.nominees:
+                                                self.cells[(other_empty.row, other_empty.column)].nominees.remove(n)
+            previous_unsolved = unsolved
+            unsolved = self.get_unsolved_count()
+        if SHOW_STEP_SOLVED:
+            print('{funcname}(): {0}/{1} solved.'.format(self.initiative_unsolved - self.get_unsolved_count(), self.initiative_unsolved, funcname=self.number_chain.__name__))
+        if self.get_unsolved_count() == 0:
+            return True
+        return False
 
     # Y-wing
     def y_wing(self):
-        for num in range(9):
-            block = self.get_cells_by('block', num)
-            doubles = list(filter(lambda x: len(x.nominees) == 2, block))
-            double_group = list(itertools.combinations(doubles, 2))
-            available_group = list(filter(lambda x: len(set(x[0].nominees) & set(x[1].nominees)) == 3 and x[0].row != x[1].row and x[0].column != x[1].column, double_group))
-            if len(available_group) == 0:
-                continue
-            for ag in available_group:
-                third_area = []
-                third_area.append(self.get_cells_by('row', ag[0].row))
-                third_area.append(self.get_cells_by('row', ag[1].row))
-                third_area.append(self.get_cells_by('column', ag[0].column))
-                third_area.append(self.get_cells_by('column', ag[1].column))
-                third_area = list(filter(lambda x: x.block != num, third_area))
-                for cell in third_area:
-                    if set(cell.nominees) == set(ag[0].nominees) ^ set(ag[1].nominees):
-                        if cell.row == ag[0].row or cell.column == ag[0].column:
-                            nominee_to_delete = (set(cell.nominees) & set(ag[1].nominees)).pop()
-                            inner_influence = [x for y in [self.get_cells_by('row', ag[1].row), self.get_cells_by('column', ag[1].column), self.get_cells_by('block', ag[1].block)] for x in y]
-                            outer_influence = [x for y in [self.get_cells_by('row', cell.row), self.get_cells_by('column', cell.column), self.get_cells_by('block', cell.block)] for x in y]
-                            common_influence = list(set(inner_influence) & set(outer_influence))
-                            for ci in common_influence:
-                                if nominee_to_delete in ci.nominees:
-                                    self.cells[(ci.row, ci.column)].nominees.remove(nominee_set)
-                        if cell.row == ag[1].row or cell.column == ag[1].column:
-                            nominee_to_delete = (set(cell.nominees) & set(ag[0].nominees)).pop()
-                            inner_influence = [x for y in [self.get_cells_by('row', ag[0].row), self.get_cells_by('column', ag[0].column), self.get_cells_by('block', ag[0].block)] for x in y]
-                            outer_influence = [x for y in [self.get_cells_by('row', cell.row), self.get_cells_by('column', cell.column), self.get_cells_by('block', cell.block)] for x in y]
-                            common_influence = list(set(inner_influence) & set(outer_influence))
-                            for ci in common_influence:
-                                if nominee_to_delete in ci.nominees:
-                                    self.cells[(ci.row, ci.column)].nominees.remove(nominee_set)
+        previous_unsolved = None
+        preview = unsolved = self.get_unsolved_count()
+        while(previous_unsolved != unsolved):
+            for num in range(9):
+                block = self.get_cells_by('block', num)
+                doubles = list(filter(lambda x: len(x.nominees) == 2, block))
+                double_group = list(itertools.combinations(doubles, 2))
+                available_group = list(filter(lambda x: len(set(x[0].nominees) & set(x[1].nominees)) == 3 and x[0].row != x[1].row and x[0].column != x[1].column, double_group))
+                if len(available_group) == 0:
+                    continue
+                for ag in available_group:
+                    third_area = []
+                    third_area.append(self.get_cells_by('row', ag[0].row))
+                    third_area.append(self.get_cells_by('row', ag[1].row))
+                    third_area.append(self.get_cells_by('column', ag[0].column))
+                    third_area.append(self.get_cells_by('column', ag[1].column))
+                    third_area = list(filter(lambda x: x.block != num, third_area))
+                    for cell in third_area:
+                        if set(cell.nominees) == set(ag[0].nominees) ^ set(ag[1].nominees):
+                            if cell.row == ag[0].row or cell.column == ag[0].column:
+                                nominee_to_delete = (set(cell.nominees) & set(ag[1].nominees)).pop()
+                                inner_influence = [x for y in [self.get_cells_by('row', ag[1].row), self.get_cells_by('column', ag[1].column), self.get_cells_by('block', ag[1].block)] for x in y]
+                                outer_influence = [x for y in [self.get_cells_by('row', cell.row), self.get_cells_by('column', cell.column), self.get_cells_by('block', cell.block)] for x in y]
+                                common_influence = list(set(inner_influence) & set(outer_influence))
+                                for ci in common_influence:
+                                    if nominee_to_delete in ci.nominees:
+                                        self.cells[(ci.row, ci.column)].nominees.remove(nominee_set)
+                            if cell.row == ag[1].row or cell.column == ag[1].column:
+                                nominee_to_delete = (set(cell.nominees) & set(ag[0].nominees)).pop()
+                                inner_influence = [x for y in [self.get_cells_by('row', ag[0].row), self.get_cells_by('column', ag[0].column), self.get_cells_by('block', ag[0].block)] for x in y]
+                                outer_influence = [x for y in [self.get_cells_by('row', cell.row), self.get_cells_by('column', cell.column), self.get_cells_by('block', cell.block)] for x in y]
+                                common_influence = list(set(inner_influence) & set(outer_influence))
+                                for ci in common_influence:
+                                    if nominee_to_delete in ci.nominees:
+                                        self.cells[(ci.row, ci.column)].nominees.remove(nominee_set)
+            previous_unsolved = unsolved
+            unsolved = self.get_unsolved_count()
+        if SHOW_STEP_SOLVED:
+            print('{funcname}(): {0}/{1} solved.'.format(self.initiative_unsolved - self.get_unsolved_count(), self.initiative_unsolved, funcname=self.y_wing.__name__))
+        if self.get_unsolved_count() == 0:
+            return True
+        return False
 
     # 暴力尝试
     def attempt(self):
@@ -283,6 +315,8 @@ class Sudoku(object):
             else:
                 pass
             self.cells[(target.row, target.column)].attempted = True # 如果 cell 在尝试过所有候选数都没有确定，改变这个标志位，在其它 cell 有候选数的变动之前不再尝试这个 cell
+        if SHOW_STEP_SOLVED:
+            print('{funcname}(): {0}/{1} solved.'.format(self.initiative_unsolved - self.get_unsolved_count(), self.initiative_unsolved, funcname=self.attempt.__name__))
     
     # 按照优先级，往复遍历一次所有求值方法
     def whole_solve(self):
@@ -292,7 +326,9 @@ class Sudoku(object):
         unsolved = self.get_unsolved_count()
         while(previous_unsolved != unsolved):
             for method in whole:
-                method()
+                res = method()
+                if res:
+                    break
             previous_unsolved = unsolved
             unsolved = self.get_unsolved_count()
 
@@ -337,4 +373,4 @@ if __name__ == '__main__':
         if unsolved:
             print('Unsolved sudoku(s):{0}'.format(unsolved))
     else:
-        run('ddd')
+        run('aaa')
