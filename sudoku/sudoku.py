@@ -7,6 +7,7 @@ import sys
 import time
 from colorama import *
 from functools import reduce
+from pprint import pprint
 
 SHOW_STEP_SOLVED = False
 
@@ -16,6 +17,7 @@ class Cell(object):
         self.row = row
         self.column = column
         self.block = ((row // 3) * 3) + (column // 3)
+        self.cage = -1
         self.value = value
         self.nominees = [n for n in range(1, 10)] if value == 0 else []
         self.is_given = False
@@ -339,7 +341,110 @@ class Sudoku(object):
                 print(self.cells[(i, j)].nominees, end=' ')
             print()
 
-            
+
+class Killer(Sudoku):
+    
+    def read_resolve(self):
+        with open('resolve') as f:
+            raw_resolve = f.readlines()
+        resolve = {}
+        for line in raw_resolve:
+            resolve_list = list(map(lambda x: int(x), line.strip().split(',')))
+            sums, counts = sum(list(map(lambda x: int(x), resolve_list))), len(resolve_list)
+            if (sums, counts) in resolve.keys():
+                resolve[(sums, counts)].append(set(resolve_list))
+            else:
+                resolve[(sums, counts)] = [set(resolve_list)]
+        return resolve
+
+    def read_sudoku(self, filename):
+        numbers = [0] * 81
+        with open(filename) as f:
+            # 不知道为什么用 '\d{1,2}{\d{1,2}(,\d{1,2})*}' 这个正则无法识别。。。因此只能退而求其次用以下这几行。。。
+            raw_cages = f.read().replace('}', '}|')[:-2].split('|')
+        self.cages = list(map(lambda x: {
+                'sum': int(x.split('{')[0]),
+                'member': list(map(lambda y: self.cells[(int(y[1]) - 1, int(y[0]) - 1)], x.replace('}', '').split('{')[1].split(',')))
+            }, raw_cages))
+        for row in range(9):
+            for column in range(9):
+                for cage in self.cages:
+                    if self.cells[(row, column)] in cage['member']:
+                        self.cells[(row, column)].cage = self.cages.index(cage)
+        self.resolve = self.read_resolve()
+ 
+    # 重写 Sudoku.suppress() ，当一个 cell 确定后，必须调用此方法，去除与该 cell 同一 row/column/block/cage 的其它 cell 的候选数
+    def suppress(self, cell, value):
+        for row in range(9):
+            for column in range(9):
+                if row == cell.row or column == cell.column or self.cells[(row, column)].block == cell.block or self.cells[(row, column)].cage == cell.cage:
+                    if value in self.cells[(row, column)].nominees:
+                        self.cells[(row, column)].nominees.remove(value)
+
+    # （该方法入循环）如果某个 cage 的 member 只含有一个空 cell ，那么这个空 cell 可以直接填入
+    def one_member(self):
+        previous_unsolved = None
+        unsolved = self.get_unsolved_count()
+        while(previous_unsolved != unsolved):
+            for cage in self.cages:
+                empty_cells = list(filter(lambda x: x.value == 0, cage['member']))
+                if len(empty_cells) == 1:
+                    if len(cage['member']) == 1:
+                    # 这个 cage 本身就只有一个 member ，直接把 sum 填入
+                        cage['member'][0].confirm(cage['sum'])
+                        self.suppress(cage['member'][0], cage['sum'])
+                    else:
+                    # 这个 cage 本身不止一个 member ，需要用 sum 和已有数字计算差值后填入
+                        to_fill = cage['sum'] - sum(list(map(lambda x: x.value, cage['member'])))
+                        empty_cells[0].confirm(to_fill)
+                        self.suppress(empty_cells[0], to_fill)
+            previous_unsolved = unsolved
+            unsolved = self.get_unsolved_count()
+
+    # （该方法入循环）将每个 cage 里面的每个 cell 不符合合法分解的候选数去除
+    def sweep(self):
+        for cage in self.cages:
+            possible_nominees = reduce(lambda x, y: x | y, self.resolve[cage['sum'], len(cage['member'])])
+            for cell in cage['member']:
+                if len(cell.nominees) > len(possible_nominees):
+                    self.cells[(cell.row, cell.column)].nominees = list(possible_nominees)
+                # 至此可能未完成，需要继续考虑
+
+    # （该方法入循环）如果某个 row/column/block 所包含的 cage 中有且仅有一个空 cell 在该 row/column/block 之外，则这个空 cell 应填入的数为这些 cage 在 row/column/block 以内的 cell 的 sum 与45之差
+    def outer_cell(self):
+        previous_unsolved = None
+        unsolved = self.get_unsolved_count()
+        while(previous_unsolved != unsolved):
+            for i in range(9):
+                for unit in ['row', 'column', 'block']:
+                    target_unit_cells = self.get_cells_by(unit, i)
+                    related_cages = reduce(lambda x, y: x if y in x else x + [y], [[], ] + list(map(lambda x: self.cages[x.cage], target_unit_cells)))
+                    related_cells = list(filter(lambda y: y, [x for j in list(map(lambda x: x['member'], related_cages)) for x in j]))
+                    outer = list(filter(lambda x: x.value == 0 and x not in target_unit_cells, related_cells))
+                    if len(outer) == 1:
+                    # 有时候某个 row/column/block 会有多个 cell 在外面，但其中只有一个 cell 是空的，在减45的时候不能忽略在 row/column/block 外面但非空的 cell
+                        outer_filled = sum(list(map(lambda y: y.value, list(filter(lambda x: x.value != 0 and x not in target_unit_cells, related_cells)))))
+                        outer_diff = sum(list(map(lambda x: x['sum'], related_cages))) - outer_filled - 45
+                        self.cells[(outer[0].row, outer[0].column)].confirm(outer_diff)
+                        self.suppress(self.cells[(outer[0].row, outer[0].column)], outer_diff)
+            previous_unsolved = unsolved
+            unsolved = self.get_unsolved_count()
+     
+    # 按照优先级，往复遍历一次所有求值方法
+    def k_whole_solve(self):
+        priority = [self.sweep, self.one_member, self.outer_cell]
+        whole = priority[:-1] + priority[::-1]
+        previous_unsolved = None
+        unsolved = self.get_unsolved_count()
+        while(previous_unsolved != unsolved):
+            for method in whole:
+                res = method()
+                if res:
+                    break
+            previous_unsolved = unsolved
+            unsolved = self.get_unsolved_count()       
+
+
 def run(filename):
     s = Sudoku()
     s.read_sudoku(filename)
@@ -355,6 +460,13 @@ def run(filename):
     return False
 
 if __name__ == '__main__':
+    k = Killer()
+    k.read_sudoku('eee')
+    k.k_whole_solve()
+    k.whole_solve()
+    k.display_sudoku()
+    exit()
+
     if len(sys.argv) > 1:
         times = []
         unsolved = []
